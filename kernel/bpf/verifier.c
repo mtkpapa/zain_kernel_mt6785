@@ -21,6 +21,7 @@
 #include <linux/vmalloc.h>
 #include <linux/stringify.h>
 
+
 static const struct bpf_verifier_ops * const bpf_verifier_ops[] = {
 #define BPF_PROG_TYPE(_id, _name) \
 	[_id] = & _name ## _verifier_ops,
@@ -29,6 +30,9 @@ static const struct bpf_verifier_ops * const bpf_verifier_ops[] = {
 #undef BPF_PROG_TYPE
 #undef BPF_MAP_TYPE
 };
+
+#include "disasm.h"
+
 
 /* bpf_check() is a static code analyzer that walks eBPF program
  * instruction by instruction and updates register/stack state.
@@ -237,6 +241,7 @@ static const char * const reg_type_str[] = {
 	[PTR_TO_SOCKET_OR_NULL] = "sock_or_null",
 };
 
+<<<<<<< HEAD
 #define __BPF_FUNC_STR_FN(x) [BPF_FUNC_ ## x] = __stringify(bpf_ ## x)
 static const char * const func_id_str[] = {
 	__BPF_FUNC_MAPPER(__BPF_FUNC_STR_FN)
@@ -254,6 +259,10 @@ static const char *func_id_name(int id)
 }
 
 static void print_verifier_state(struct bpf_verifier_state *state)
+=======
+static void print_verifier_state(struct bpf_verifier_env *env,
+				 struct bpf_verifier_state *state)
+>>>>>>> a74176ab390f (BACKPORT: bpf: move instruction printing into a separate file)
 {
 	struct bpf_reg_state *reg;
 	enum bpf_reg_type t;
@@ -321,6 +330,7 @@ static void print_verifier_state(struct bpf_verifier_state *state)
 	verbose("\n");
 }
 
+<<<<<<< HEAD
 static const char *const bpf_class_string[] = {
 	[BPF_LD]    = "ld",
 	[BPF_LDX]   = "ldx",
@@ -482,6 +492,8 @@ static void print_bpf_insn(const struct bpf_verifier_env *env,
 	}
 }
 
+=======
+>>>>>>> a74176ab390f (BACKPORT: bpf: move instruction printing into a separate file)
 static int copy_stack_state(struct bpf_verifier_state *dst,
 			    const struct bpf_verifier_state *src)
 {
@@ -4444,9 +4456,16 @@ static int do_check(struct bpf_verifier_env *env)
 			do_print_state = false;
 		}
 
+<<<<<<< HEAD
 		if (verifier_log.level) {
 			verbose("%d: ", env->insn_idx);
 			print_bpf_insn(env, insn);
+=======
+		if (env->log.level) {
+                        verbose(env, "%d: ", env->insn_idx);
+			print_bpf_insn(verbose, env, insn,
+				       env->allow_ptr_leaks);
+>>>>>>> a74176ab390f (BACKPORT: bpf: move instruction printing into a separate file)
 		}
 
 		if (bpf_prog_is_dev_bound(env->prog->aux)) {
