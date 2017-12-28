@@ -1048,6 +1048,9 @@ struct bpf_prog_info {
 	__u32 xlated_prog_len;
 	__aligned_u64 jited_prog_insns;
 	__aligned_u64 xlated_prog_insns;
+	__u32 ifindex;
+	__u64 netns_dev;
+	__u64 netns_ino;
 } __attribute__((aligned(8)));
 
 struct bpf_map_info {
