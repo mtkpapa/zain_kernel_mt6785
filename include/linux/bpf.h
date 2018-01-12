@@ -208,7 +208,7 @@ struct bpf_prog_offload_ops {
 			 int insn_idx, int prev_insn_idx);
 };
 
-struct bpf_dev_offload {
+struct bpf_prog_offload {
 	struct bpf_prog		*prog;
 	struct net_device	*netdev;
 	void			*dev_priv;
@@ -239,7 +239,7 @@ struct bpf_prog_aux {
 	void *security;
 #endif
 	struct bpf_map *cgroup_storage[MAX_BPF_CGROUP_STORAGE_TYPE];
-	struct bpf_dev_offload *offload;
+	struct bpf_prog_offload *offload;
 	union {
 		struct work_struct work;
 		struct rcu_head	rcu;
