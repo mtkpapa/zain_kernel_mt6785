@@ -24,7 +24,7 @@ extern const char *const bpf_class_string[8];
 const char *func_id_name(int id);
 
 struct bpf_verifier_env;
-typedef void (*bpf_insn_print_cb)(struct bpf_verifier_env *env,
+typedef __printf(2, 3) void (*bpf_insn_print_cb)(struct bpf_verifier_env *env,
 				  const char *, ...);
 void print_bpf_insn(bpf_insn_print_cb verbose, struct bpf_verifier_env *env,
 		    const struct bpf_insn *insn, bool allow_ptr_leaks);
