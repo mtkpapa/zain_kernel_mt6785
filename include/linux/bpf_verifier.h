@@ -136,6 +136,19 @@ struct bpf_insn_aux_data {
 
 #define MAX_USED_MAPS 64 /* max number of maps accessed by one eBPF program */
 
+struct bpf_verifier_log {
+	u32 level;
+	char *kbuf;
+	char __user *ubuf;
+	u32 len_used;
+	u32 len_total;
+};
+
+static inline bool bpf_verifier_log_full(const struct bpf_verifier_log *log)
+{
+	return log->len_used >= log->len_total - 1;
+}
+
 struct bpf_verifier_env;
 struct bpf_ext_analyzer_ops {
 	int (*insn_hook)(struct bpf_verifier_env *env,
@@ -162,6 +175,7 @@ struct bpf_verifier_env {
 	bool allow_ptr_leaks;
 	bool seen_direct_write;
 	struct bpf_insn_aux_data *insn_aux_data; /* array of per-insn state */
+    struct bpf_verifier_log log;
 };
 
 static inline struct bpf_reg_state *cur_regs(struct bpf_verifier_env *env)

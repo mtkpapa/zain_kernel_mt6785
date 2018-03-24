@@ -167,6 +167,7 @@ static DEFINE_MUTEX(bpf_verifier_lock);
  */
 static __printf(1, 2) void verbose(const char *fmt, ...)
 {
+	struct bpf_verifier_log *log = &env->log;
 	va_list args;
 
 	if (log_level == 0 || log_len >= log_size - 1)
@@ -5081,6 +5082,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 {
 	char __user *log_ubuf = NULL;
 	struct bpf_verifier_env *env;
+	struct bpf_verifier_log *log;
 	int ret = -EINVAL;
 
 	/* 'struct bpf_verifier_env' can be global, but since it's not small,
