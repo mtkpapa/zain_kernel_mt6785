@@ -266,6 +266,9 @@ union bpf_attr {
 					 * BPF_F_NUMA_NODE is set).
 					 */
 		__u32	map_ifindex;	/* ifindex of netdev to create on */
+		__u32	btf_fd;		/* fd pointing to a BTF type data */
+		__u32	btf_key_id;	/* BTF type_id of the key */
+		__u32	btf_value_id;	/* BTF type_id of the value */
 	};
 
 	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
