@@ -355,6 +355,75 @@ int bpf_get_file_flag(int flags)
 		   sizeof(attr->CMD##_LAST_FIELD)) != NULL
 
 #define BPF_MAP_CREATE_LAST_FIELD numa_node
+
+/* dst and src must have at least BPF_OBJ_NAME_LEN number of bytes.
+ * Return 0 on success and < 0 on error.
+ */
+static int bpf_obj_name_cpy(char *dst, const char *src)
+{
+	const char *end = src + BPF_OBJ_NAME_LEN;
+
+	memset(dst, 0, BPF_OBJ_NAME_LEN);
+
+	/* Copy all isalnum() and '_' char */
+	while (src < end && *src) {
+		if (!isalnum(*src) && *src != '_')
+			return -EINVAL;
+		*dst++ = *src++;
+	}
+
+	/* No '\0' found in BPF_OBJ_NAME_LEN number of bytes */
+	if (src == end)
+		return -EINVAL;
+
+	return 0;
+}
+
+int map_check_no_btf(const struct bpf_map *map,
+		     const struct btf *btf,
+		     const struct btf_type *key_type,
+		     const struct btf_type *value_type)
+{
+	return -ENOTSUPP;
+}
+
+static int map_check_btf(struct bpf_map *map, const struct btf *btf,
+			 u32 btf_key_id, u32 btf_value_id)
+{
+	const struct btf_type *key_type, *value_type;
+	u32 key_size, value_size;
+	int ret = 0;
+	key_type = btf_type_id_size(btf, &btf_key_id, &key_size);
+
+	if (!key_type || key_size != map->key_size)
+		return -EINVAL;
+
+	value_type = btf_type_id_size(btf, &btf_value_id, &value_size);
+	if (!value_type || value_size != map->value_size)
+		return -EINVAL;
+
+	map->spin_lock_off = btf_find_spin_lock(btf, value_type);
+
+	if (map_value_has_spin_lock(map)) {
+		if (map->map_type != BPF_MAP_TYPE_HASH &&
+		    map->map_type != BPF_MAP_TYPE_ARRAY)
+			return -ENOTSUPP;
+		if (map->spin_lock_off + sizeof(struct bpf_spin_lock) >
+		    map->value_size) {
+			WARN_ONCE(1,
+				  "verifier bug spin_lock_off %d value_size %d\n",
+				  map->spin_lock_off, map->value_size);
+			return -EFAULT;
+		}
+	}
+
+	if (map->ops->map_check_btf)
+		ret = map->ops->map_check_btf(map, btf, key_type, value_type);
+
+	return ret;
+}
+
+#define BPF_MAP_CREATE_LAST_FIELD btf_value_type_id
 /* called via syscall */
 static int map_create(union bpf_attr *attr)
 {
@@ -383,6 +452,33 @@ static int map_create(union bpf_attr *attr)
 
 	atomic_set(&map->refcnt, 1);
 	atomic_set(&map->usercnt, 1);
+
+	if (bpf_map_support_seq_show(map) &&
+	    (attr->btf_key_type_id || attr->btf_value_type_id)) {
+		struct btf *btf;
+
+		if (!attr->btf_key_type_id || !attr->btf_value_type_id) {
+			err = -EINVAL;
+			goto free_map_nouncharge;
+		}
+		btf = btf_get_by_fd(attr->btf_fd);
+		if (IS_ERR(btf)) {
+			err = PTR_ERR(btf);
+			goto free_map_nouncharge;
+		}
+
+		err = map_check_btf(map, btf, attr->btf_key_type_id,
+					      attr->btf_value_type_id);
+		if (err) {
+			btf_put(btf);
+			goto free_map_nouncharge;
+		}
+		map->btf = btf;
+		map->btf_key_type_id = attr->btf_key_type_id;
+		map->btf_value_type_id = attr->btf_value_type_id;
+	} else {
+		map->spin_lock_off = -EINVAL;
+	}
 
 	err = security_bpf_map_alloc(map);
 	if (err)
@@ -570,7 +666,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 		else
 			ptr = map->ops->map_lookup_elem(map, key);
 		if (ptr)
-			memcpy(value, ptr, value_size);
+			copy_map_value(map, value, ptr);
 		rcu_read_unlock();
 		err = ptr ? 0 : -ENOENT;
 	}

@@ -104,6 +104,7 @@ struct bpf_verifier_state {
 	struct bpf_verifier_state *parent;
 	int allocated_stack;
 	struct bpf_stack_state *stack;
+	u32 active_spin_lock;
 	bool speculative;
 };
 
