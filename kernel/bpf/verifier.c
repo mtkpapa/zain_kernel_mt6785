@@ -287,10 +287,26 @@ static bool type_is_pkt_pointer(enum bpf_reg_type type)
 	       type == PTR_TO_PACKET_META;
 }
 
+<<<<<<< HEAD
 static bool reg_type_may_be_null(enum bpf_reg_type type)
 {
 	return type == PTR_TO_MAP_VALUE_OR_NULL ||
 	       type == PTR_TO_SOCKET_OR_NULL;
+=======
+static bool type_is_sk_pointer(enum bpf_reg_type type)
+{
+	return type == PTR_TO_SOCKET ||
+		type == PTR_TO_SOCK_COMMON ||
+		type == PTR_TO_TCP_SOCK;
+}
+
+static bool reg_type_may_be_null(enum bpf_reg_type type)
+{
+	return type == PTR_TO_MAP_VALUE_OR_NULL ||
+	       type == PTR_TO_SOCKET_OR_NULL ||
+	       type == PTR_TO_SOCK_COMMON_OR_NULL ||
+	       type == PTR_TO_TCP_SOCK_OR_NULL;
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 }
 
 static bool type_is_refcounted(enum bpf_reg_type type)
@@ -348,6 +364,13 @@ static const char * const reg_type_str[] = {
 	[PTR_TO_FLOW_KEYS]	= "flow_keys",
 	[PTR_TO_SOCKET]		= "sock",
 	[PTR_TO_SOCKET_OR_NULL] = "sock_or_null",
+<<<<<<< HEAD
+=======
+	[PTR_TO_SOCK_COMMON]	= "sock_common",
+	[PTR_TO_SOCK_COMMON_OR_NULL] = "sock_common_or_null",
+	[PTR_TO_TCP_SOCK]	= "tcp_sock",
+	[PTR_TO_TCP_SOCK_OR_NULL] = "tcp_sock_or_null",
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 };
 
 <<<<<<< HEAD
@@ -1354,6 +1377,13 @@ static bool is_spillable_regtype(enum bpf_reg_type type)
 	case CONST_PTR_TO_MAP:
 	case PTR_TO_SOCKET:
 	case PTR_TO_SOCKET_OR_NULL:
+<<<<<<< HEAD
+=======
+	case PTR_TO_SOCK_COMMON:
+	case PTR_TO_SOCK_COMMON_OR_NULL:
+	case PTR_TO_TCP_SOCK:
+	case PTR_TO_TCP_SOCK_OR_NULL:
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 		return true;
 	default:
 		return false;
@@ -1774,8 +1804,18 @@ static int check_sock_access(struct bpf_verifier_env *env, u32 regno, int off,
 	if (reg->smin_value < 0) {
 		return -EACCES;
 	}
-	if (!bpf_sock_is_valid_access(off, size, t, &info)) {
-		return -EACCES;
+	switch (reg->type) {
+	case PTR_TO_SOCK_COMMON:
+		valid = bpf_sock_common_is_valid_access(off, size, t, &info);
+		break;
+	case PTR_TO_SOCKET:
+		valid = bpf_sock_is_valid_access(off, size, t, &info);
+		break;
+	case PTR_TO_TCP_SOCK:
+		valid = bpf_tcp_sock_is_valid_access(off, size, t, &info);
+		break;
+	default:
+		valid = false;
 	}
 	return 0;
 }
@@ -1904,6 +1944,15 @@ static int check_ptr_alignment(struct bpf_verifier_env *env,
 	case PTR_TO_SOCKET:
 		pointer_desc = "sock ";
 		break;
+<<<<<<< HEAD
+=======
+	case PTR_TO_SOCK_COMMON:
+		pointer_desc = "sock_common ";
+		break;
+	case PTR_TO_TCP_SOCK:
+		pointer_desc = "tcp_sock ";
+		break;
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 	default:
 		break;
 	}
@@ -3144,7 +3193,25 @@ static int check_helper_call(struct bpf_verifier_env *env, int func_id, int insn
 			return id;
 		mark_reg_known_zero(env, regs, BPF_REG_0);
 		regs[BPF_REG_0].type = PTR_TO_SOCKET_OR_NULL;
+<<<<<<< HEAD
 		regs[BPF_REG_0].id = id;
+=======
+		if (is_acquire_function(func_id)) {
+			int id = acquire_reference_state(env, insn_idx);
+
+			if (id < 0)
+				return id;
+			/* For release_reference() */
+			regs[BPF_REG_0].id = id;
+		} else {
+			/* For mark_ptr_or_null_reg() */
+			regs[BPF_REG_0].id = ++env->id_gen;
+		}
+	} else if (fn->ret_type == RET_PTR_TO_TCP_SOCK_OR_NULL) {
+		mark_reg_known_zero(env, regs, BPF_REG_0);
+		regs[BPF_REG_0].type = PTR_TO_TCP_SOCK_OR_NULL;
+		regs[BPF_REG_0].id = ++env->id_gen;
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 	} else {
 		verbose("unknown return type %d of func %s#%d\n",
 			fn->ret_type, func_id_name(func_id), func_id);
@@ -3513,6 +3580,7 @@ static int adjust_ptr_min_max_vals(struct bpf_verifier_env *env,
 		verbose("R%d pointer arithmetic on PTR_TO_MAP_VALUE_OR_NULL prohibited, null-check it first\n",
 			dst);
 		return -EACCES;
+<<<<<<< HEAD
 	}
 	if (ptr_reg->type == CONST_PTR_TO_MAP) {
 		verbose("R%d pointer arithmetic on CONST_PTR_TO_MAP prohibited\n",
@@ -3522,6 +3590,16 @@ static int adjust_ptr_min_max_vals(struct bpf_verifier_env *env,
 	if (ptr_reg->type == PTR_TO_PACKET_END) {
 		verbose("R%d pointer arithmetic on PTR_TO_PACKET_END prohibited\n",
 			dst);
+=======
+	case CONST_PTR_TO_MAP:
+	case PTR_TO_PACKET_END:
+        case PTR_TO_SOCK_COMMON:
+        case PTR_TO_SOCK_COMMON_OR_NULL:
+	case PTR_TO_TCP_SOCK:
+	case PTR_TO_TCP_SOCK_OR_NULL:
+		verbose(env, "R%d pointer arithmetic on %s prohibited\n",
+			dst, reg_type_str[ptr_reg->type]);
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 		return -EACCES;
 	}
 
@@ -4482,6 +4560,15 @@ static void mark_ptr_or_null_reg(struct bpf_func_state *state,
 			} else {
 				reg->type = PTR_TO_MAP_VALUE;
 			}
+<<<<<<< HEAD
+=======
+		} else if (reg->type == PTR_TO_SOCKET_OR_NULL) {
+			reg->type = PTR_TO_SOCKET;
+		} else if (reg->type == PTR_TO_SOCK_COMMON_OR_NULL) {
+			reg->type = PTR_TO_SOCK_COMMON;
+		} else if (reg->type == PTR_TO_TCP_SOCK_OR_NULL) {
+			reg->type = PTR_TO_TCP_SOCK;
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 		}
 
 		if (is_null || !(reg_is_refcounted(reg) ||
@@ -5521,6 +5608,13 @@ static bool regsafe(struct bpf_reg_state *rold, struct bpf_reg_state *rcur,
 	case PTR_TO_SOCKET:
 	case PTR_TO_SOCKET_OR_NULL:
 	case PTR_TO_FLOW_KEYS:
+<<<<<<< HEAD
+=======
+	case PTR_TO_SOCK_COMMON:
+	case PTR_TO_SOCK_COMMON_OR_NULL:
+	case PTR_TO_TCP_SOCK:
+	case PTR_TO_TCP_SOCK_OR_NULL:
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 		/* Only valid matches are exact, which memcmp() above
 		 * would have accepted
 		 */
@@ -5807,6 +5901,13 @@ static bool reg_type_mismatch_ok(enum bpf_reg_type type)
 	case PTR_TO_CTX:
 	case PTR_TO_SOCKET:
 	case PTR_TO_SOCKET_OR_NULL:
+<<<<<<< HEAD
+=======
+	case PTR_TO_SOCK_COMMON:
+	case PTR_TO_SOCK_COMMON_OR_NULL:
+	case PTR_TO_TCP_SOCK:
+	case PTR_TO_TCP_SOCK_OR_NULL:
+>>>>>>> ad11f51dc485 (bpf: Add struct bpf_tcp_sock and BPF_FUNC_tcp_sock)
 		return false;
 	default:
 		return true;
@@ -6541,6 +6642,9 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 			break;
 		case PTR_TO_SOCKET:
 			convert_ctx_access = bpf_sock_convert_ctx_access;
+			break;
+		case PTR_TO_TCP_SOCK:
+			convert_ctx_access = bpf_tcp_sock_convert_ctx_access;
 			break;
 		default:
 			continue;
