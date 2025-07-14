@@ -1,2 +1,3 @@
 *.c   diff=cpp
 *.h   diff=cpp
+drivers/android merge=ours
