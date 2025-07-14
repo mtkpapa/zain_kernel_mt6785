@@ -21,6 +21,7 @@
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <linux/component.h>
+#include <linux/iopoll.h>
 #include <linux/irq.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -1088,6 +1089,7 @@ static void mtk_dsi_set_mode(struct mtk_dsi *dsi)
 		else
 			vid_mode = SYNC_EVENT_MODE;
 	}
+
 	writel(vid_mode, dsi->regs + DSI_MODE_CTRL);
 }
 
@@ -1241,6 +1243,7 @@ static void mtk_dsi_rxtx_control(struct mtk_dsi *dsi)
 #endif
 
 	writel(tmp_reg, dsi->regs + DSI_TXRX_CTRL);
+}
 
 	/* need to config for cmd mode to transmit frame data to DDIC */
 	writel(DSI_WMEM_CONTI, dsi->regs + DSI_MEM_CONTI);
@@ -1717,6 +1720,7 @@ static irqreturn_t mtk_dsi_irq(int irq, void *dev_id)
 	u32 flag = LPRX_RD_RDY_INT_FLAG | CMD_DONE_INT_FLAG | VM_DONE_INT_FLAG;
 
 	status = readl(dsi->regs + DSI_INTSTA) & flag;
+
 	if (status) {
 		do {
 			mtk_dsi_mask(dsi, DSI_RACK, RACK, RACK);
@@ -2243,6 +2247,8 @@ static bool mtk_dsi_encoder_mode_fixup(struct drm_encoder *encoder,
 static void mtk_dsi_mode_set(struct mtk_dsi *dsi,
 			     struct drm_display_mode *adjusted)
 {
+	struct mtk_dsi *dsi = encoder_to_dsi(encoder);
+
 	dsi->vm.pixelclock = adjusted->clock;
 	dsi->vm.hactive = adjusted->hdisplay;
 	dsi->vm.hback_porch = adjusted->htotal - adjusted->hsync_end;
@@ -2476,6 +2482,8 @@ static int mtk_dsi_create_conn_enc(struct drm_device *drm, struct mtk_dsi *dsi)
 	/* If there's a bridge, attach to it and let it create the connector */
 	ret = mtk_drm_attach_bridge(dsi->bridge, &dsi->encoder);
 	if (ret) {
+		DRM_ERROR("Failed to attach bridge to drm\n");
+
 		/* Otherwise create our own connector and attach to a panel */
 		ret = mtk_dsi_create_connector(drm, dsi);
 		if (ret)
@@ -2495,6 +2503,8 @@ static void mtk_dsi_destroy_conn_enc(struct mtk_dsi *dsi)
 	/* Skip connector cleanup if creation was delegated to the bridge */
 	if (dsi->conn.dev)
 		drm_connector_cleanup(&dsi->conn);
+	if (dsi->panel)
+		drm_panel_detach(dsi->panel);
 }
 
 struct mtk_panel_ext *mtk_dsi_get_panel_ext(struct mtk_ddp_comp *comp)
@@ -3484,6 +3494,21 @@ static int mtk_dsi_host_detach(struct mipi_dsi_host *host,
 		drm_helper_hpd_irq_event(dsi->conn.dev);
 
 	return 0;
+}
+
+static void mtk_dsi_wait_for_idle(struct mtk_dsi *dsi)
+{
+	int ret;
+	u32 val;
+
+	ret = readl_poll_timeout(dsi->regs + DSI_INTSTA, val, !(val & DSI_BUSY),
+				 4, 2000000);
+	if (ret) {
+		DRM_WARN("polling dsi wait not busy timeout!\n");
+
+		mtk_dsi_enable(dsi);
+		mtk_dsi_reset_engine(dsi);
+	}
 }
 
 static u32 mtk_dsi_recv_cnt(u8 type, u8 *read_data)
@@ -5753,6 +5778,12 @@ static int mtk_dsi_bind(struct device *dev, struct device *master, void *data)
 		return ret;
 	}
 
+	ret = mipi_dsi_host_register(&dsi->host);
+	if (ret < 0) {
+		dev_err(dev, "failed to register DSI host: %d\n", ret);
+		goto err_ddp_comp_unregister;
+	}
+
 	ret = mtk_dsi_create_conn_enc(drm, dsi);
 	if (ret) {
 		DRM_ERROR("Encoder create failed with %d\n", ret);
@@ -5764,6 +5795,7 @@ static int mtk_dsi_bind(struct device *dev, struct device *master, void *data)
 
 err_unregister:
 	mipi_dsi_host_unregister(&dsi->host);
+err_ddp_comp_unregister:
 	mtk_ddp_comp_unregister(drm, &dsi->ddp_comp);
 	return ret;
 }
@@ -6046,6 +6078,12 @@ static int mtk_dsi_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+static const struct of_device_id mtk_dsi_of_match[] = {
+	{ .compatible = "mediatek,mt2701-dsi" },
+	{ .compatible = "mediatek,mt8173-dsi" },
+	{ },
+};
 
 struct platform_driver mtk_dsi_driver = {
 	.probe = mtk_dsi_probe,
