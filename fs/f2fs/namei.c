@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * fs/f2fs/namei.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *             http://www.samsung.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
@@ -85,7 +88,6 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 
 	if (test_opt(sbi, INLINE_XATTR))
 		set_inode_flag(inode, FI_INLINE_XATTR);
-
 	if (test_opt(sbi, INLINE_DATA) && f2fs_may_inline_data(inode))
 		set_inode_flag(inode, FI_INLINE_DATA);
 	if (f2fs_may_inline_dentry(inode))
@@ -213,6 +215,7 @@ int f2fs_update_extension_list(struct f2fs_sb_info *sbi, const char *name,
 	int total_count = cold_count + hot_count;
 	int start, count;
 	int i;
+	__u8 (*extlist)[8] = sbi->raw_super->extension_list;
 
 	if (set) {
 		if (total_count == F2FS_MAX_EXTENSION)
@@ -447,6 +450,7 @@ static int __recover_dot_dentries(struct inode *dir, nid_t pino)
 
 	de = f2fs_find_entry(dir, &dot, &page);
 	if (de) {
+		f2fs_dentry_kunmap(dir, page);
 		f2fs_put_page(page, 0);
 	} else if (IS_ERR(page)) {
 		err = PTR_ERR(page);
@@ -501,6 +505,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	de = __f2fs_find_entry(dir, &fname, &page);
 	f2fs_free_filename(&fname);
 
+	de = f2fs_find_entry(dir, &dentry->d_name, &page);
 	if (!de) {
 		if (IS_ERR(page)) {
 			err = PTR_ERR(page);
@@ -511,6 +516,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	}
 
 	ino = le32_to_cpu(de->ino);
+	f2fs_dentry_kunmap(dir, page);
 	f2fs_put_page(page, 0);
 
 	inode = f2fs_iget(dir->i_sb, ino);
@@ -596,6 +602,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	err = f2fs_acquire_orphan_inode(sbi);
 	if (err) {
 		f2fs_unlock_op(sbi);
+		f2fs_dentry_kunmap(dir, page);
 		f2fs_put_page(page, 0);
 		goto fail;
 	}
@@ -967,6 +974,12 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		}
 	}
 
+	if (flags & RENAME_WHITEOUT) {
+		err = f2fs_create_whiteout(old_dir, &whiteout);
+		if (err)
+			goto out_dir;
+	}
+
 	if (new_inode) {
 
 		err = -ENOTEMPTY;
@@ -1017,6 +1030,28 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 		if (old_dir_entry)
 			f2fs_i_links_write(new_dir, true);
+
+		/*
+		 * old entry and new entry can locate in the same inline
+		 * dentry in inode, when attaching new entry in inline dentry,
+		 * it could force inline dentry conversion, after that,
+		 * old_entry and old_page will point to wrong address, in
+		 * order to avoid this, let's do the check and update here.
+		 */
+		if (is_old_inline && !f2fs_has_inline_dentry(old_dir)) {
+			f2fs_put_page(old_page, 0);
+			old_page = NULL;
+
+			old_entry = f2fs_find_entry(old_dir,
+						&old_dentry->d_name, &old_page);
+			if (!old_entry) {
+				err = -ENOENT;
+				if (IS_ERR(old_page))
+					err = PTR_ERR(old_page);
+				f2fs_unlock_op(sbi);
+				goto out_whiteout;
+			}
+		}
 	}
 
 	down_write(&F2FS_I(old_inode)->i_sem);
@@ -1034,6 +1069,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	old_page = NULL;
 
 	if (whiteout) {
+		whiteout->i_state |= I_LINKABLE;
 		set_inode_flag(whiteout, FI_INC_LINK);
 		err = f2fs_add_link(old_dentry, whiteout);
 		if (err)
@@ -1048,6 +1084,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 						old_dir_page, new_dir);
 		else
 			f2fs_put_page(old_dir_page, 0);
+		}
 		f2fs_i_links_write(old_dir, false);
 	}
 	if (F2FS_OPTION(sbi).fsync_mode == FSYNC_MODE_STRICT) {
@@ -1071,7 +1108,9 @@ put_out_dir:
 out_dir:
 	if (old_dir_entry)
 		f2fs_put_page(old_dir_page, 0);
+	}
 out_old:
+	f2fs_dentry_kunmap(old_dir, old_page);
 	f2fs_put_page(old_page, 0);
 out:
 	if (whiteout)
@@ -1230,15 +1269,19 @@ static int f2fs_cross_rename(struct inode *old_dir, struct dentry *old_dentry,
 	return 0;
 out_new_dir:
 	if (new_dir_entry) {
+		f2fs_dentry_kunmap(new_inode, new_dir_page);
 		f2fs_put_page(new_dir_page, 0);
 	}
 out_old_dir:
 	if (old_dir_entry) {
+		f2fs_dentry_kunmap(old_inode, old_dir_page);
 		f2fs_put_page(old_dir_page, 0);
 	}
 out_new:
+	f2fs_dentry_kunmap(new_dir, new_page);
 	f2fs_put_page(new_page, 0);
 out_old:
+	f2fs_dentry_kunmap(old_dir, old_page);
 	f2fs_put_page(old_page, 0);
 out:
 	return err;
@@ -1293,7 +1336,9 @@ const struct inode_operations f2fs_encrypted_symlink_inode_operations = {
 	.get_link       = f2fs_encrypted_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
+#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
+#endif
 };
 
 const struct inode_operations f2fs_dir_inode_operations = {
@@ -1311,6 +1356,7 @@ const struct inode_operations f2fs_dir_inode_operations = {
 	.setattr	= f2fs_setattr,
 	.get_acl	= f2fs_get_acl,
 	.set_acl	= f2fs_set_acl,
+#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
 	.fiemap		= f2fs_fiemap,
 };
@@ -1319,7 +1365,9 @@ const struct inode_operations f2fs_symlink_inode_operations = {
 	.get_link       = f2fs_get_link,
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
+#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
+#endif
 };
 
 const struct inode_operations f2fs_special_inode_operations = {
@@ -1327,5 +1375,7 @@ const struct inode_operations f2fs_special_inode_operations = {
 	.setattr        = f2fs_setattr,
 	.get_acl	= f2fs_get_acl,
 	.set_acl	= f2fs_set_acl,
+#ifdef CONFIG_F2FS_FS_XATTR
 	.listxattr	= f2fs_listxattr,
+#endif
 };
