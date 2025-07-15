@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * fs/f2fs/segment.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *             http://www.samsung.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
@@ -185,6 +188,7 @@ bool f2fs_need_SSR(struct f2fs_sb_info *sbi)
 
 void f2fs_register_inmem_page(struct inode *inode, struct page *page)
 {
+	struct f2fs_inode_info *fi = F2FS_I(inode);
 	struct inmem_pages *new;
 
 	f2fs_trace_pid(page);
@@ -198,6 +202,7 @@ void f2fs_register_inmem_page(struct inode *inode, struct page *page)
 	INIT_LIST_HEAD(&new->list);
 
 	/* increase reference count with clean state */
+	mutex_lock(&fi->inmem_lock);
 	get_page(page);
 	mutex_lock(&F2FS_I(inode)->inmem_lock);
 	list_add_tail(&new->list, &F2FS_I(inode)->inmem_pages);
@@ -462,13 +467,16 @@ int f2fs_commit_inmem_pages(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct f2fs_inode_info *fi = F2FS_I(inode);
+	struct list_head revoke_list;
 	int err;
 
+	INIT_LIST_HEAD(&revoke_list);
 	f2fs_balance_fs(sbi, true);
 
 	down_write(&fi->i_gc_rwsem[WRITE]);
 
 	f2fs_lock_op(sbi);
+
 	set_inode_flag(inode, FI_ATOMIC_COMMIT);
 
 	mutex_lock(&fi->inmem_lock);
@@ -489,10 +497,12 @@ int f2fs_commit_inmem_pages(struct inode *inode)
  */
 void f2fs_balance_fs(struct f2fs_sb_info *sbi, bool need)
 {
+#ifdef CONFIG_F2FS_FAULT_INJECTION
 	if (time_to_inject(sbi, FAULT_CHECKPOINT)) {
 		f2fs_show_injection_info(sbi, FAULT_CHECKPOINT);
 		f2fs_stop_checkpoint(sbi, false);
 	}
+#endif
 
 	/* balance_fs_bg is able to be pending */
 	if (need && excess_cached_nats(sbi))
@@ -1205,6 +1215,14 @@ submit:
 		submit_bio(bio);
 
 		atomic_inc(&dcc->issued_discard);
+		atomic_inc(&dcc->issing_discard);
+		if (bio) {
+			bio->bi_private = dc;
+			bio->bi_end_io = f2fs_submit_discard_endio;
+			bio->bi_opf |= REQ_SYNC;
+			submit_bio(bio);
+			list_move_tail(&dc->list, &dcc->wait_list);
+			__check_sit_bitmap(sbi, dc->start, dc->start + dc->len);
 
 		f2fs_update_iostat(sbi, FS_DISCARD, 1);
 
@@ -1377,6 +1395,8 @@ static void __update_discard_tree_range(struct f2fs_sb_info *sbi,
 		node = rb_next(&prev_dc->rb_node);
 		next_dc = rb_entry_safe(node, struct discard_cmd, rb_node);
 	}
+
+	mutex_unlock(&dcc->cmd_lock);
 }
 
 static int __queue_discard_cmd(struct f2fs_sb_info *sbi,
@@ -2016,6 +2036,7 @@ find_next:
 
 			f2fs_issue_discard(sbi, entry->start_blkaddr + cur_pos,
 									len);
+			cpc->trimmed += len;
 			total_len += len;
 		} else {
 			next_pos = find_next_bit_le(entry->discard_map,
@@ -2030,6 +2051,7 @@ skip:
 
 		release_discard_addr(entry);
 		dcc->nr_discards -= total_len;
+		kmem_cache_free(discard_entry_slab, entry);
 	}
 
 	wake_up_discard_thread(sbi, false);
@@ -2054,6 +2076,9 @@ static int create_discard_cmd_control(struct f2fs_sb_info *sbi)
 	INIT_LIST_HEAD(&dcc->entry_list);
 	for (i = 0; i < MAX_PLIST_NUM; i++)
 		INIT_LIST_HEAD(&dcc->pend_list[i]);
+		if (i >= dcc->discard_granularity - 1)
+			dcc->pend_list_tag[i] |= P_ACTIVE;
+	}
 	INIT_LIST_HEAD(&dcc->wait_list);
 	INIT_LIST_HEAD(&dcc->fstrim_list);
 	mutex_init(&dcc->cmd_lock);
@@ -2427,6 +2452,7 @@ find_other_zone:
 	}
 	secno = left_start;
 skip_left:
+	hint = secno;
 	segno = GET_SEG_FROM_SEC(sbi, secno);
 	zoneno = GET_ZONE_FROM_SEC(sbi, secno);
 
@@ -3271,6 +3297,7 @@ void f2fs_outplace_write_data(struct dnode_of_data *dn,
 {
 	struct f2fs_sb_info *sbi = fio->sbi;
 	struct f2fs_summary sum;
+	struct node_info ni;
 
 	f2fs_bug_on(sbi, dn->data_blkaddr == NULL_ADDR);
 	set_summary(&sum, dn->nid, dn->ofs_in_node, fio->version);
@@ -3762,6 +3789,7 @@ static struct page *get_next_sit_page(struct f2fs_sb_info *sbi,
 	struct sit_info *sit_i = SIT_I(sbi);
 	struct page *page;
 	pgoff_t src_off, dst_off;
+	void *src_addr, *dst_addr;
 
 	src_off = current_sit_addr(sbi, start);
 	dst_off = next_sit_addr(sbi, src_off);
@@ -4546,6 +4574,7 @@ static void destroy_free_segmap(struct f2fs_sb_info *sbi)
 static void destroy_sit_info(struct f2fs_sb_info *sbi)
 {
 	struct sit_info *sit_i = SIT_I(sbi);
+	unsigned int start;
 
 	if (!sit_i)
 		return;

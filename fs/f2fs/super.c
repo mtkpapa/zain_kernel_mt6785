@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * fs/f2fs/super.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *             http://www.samsung.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -65,6 +68,9 @@ void f2fs_build_fault_attr(struct f2fs_sb_info *sbi, unsigned int rate,
 	if (rate) {
 		atomic_set(&ffi->inject_ops, 0);
 		ffi->inject_rate = rate;
+		ffi->inject_type = (1 << FAULT_MAX) - 1;
+	} else {
+		memset(ffi, 0, sizeof(struct f2fs_fault_info));
 	}
 
 	if (type)
@@ -467,6 +473,7 @@ static int parse_options(struct super_block *sb, char *options, bool is_remount)
 	kuid_t uid;
 	kgid_t gid;
 	int ret;
+#endif
 
 	if (!options)
 		return 0;
@@ -700,6 +707,7 @@ static int parse_options(struct super_block *sb, char *options, bool is_remount)
 			f2fs_info(sbi, "fault_type options not supported");
 			break;
 #endif
+			break;
 		case Opt_lazytime:
 			sb->s_flags |= MS_LAZYTIME;
 			break;
@@ -990,7 +998,10 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	init_once((void *) fi);
 
 	/* Initialize f2fs-specific inode info */
+	fi->vfs_inode.i_version = 1;
 	atomic_set(&fi->dirty_pages, 0);
+	fi->i_current_depth = 1;
+	fi->i_advise = 0;
 	init_rwsem(&fi->i_sem);
 	spin_lock_init(&fi->i_size_lock);
 	INIT_LIST_HEAD(&fi->dirty_list);
@@ -1003,6 +1014,10 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	init_rwsem(&fi->i_mmap_sem);
 	init_rwsem(&fi->i_xattr_sem);
 
+#ifdef CONFIG_QUOTA
+	memset(&fi->i_dquot, 0, sizeof(fi->i_dquot));
+	fi->i_reserved_quota = 0;
+#endif
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
@@ -1058,6 +1073,7 @@ static int f2fs_drop_inode(struct inode *inode)
 
 			sb_end_intwrite(inode->i_sb);
 
+			fscrypt_put_encryption_info(inode, NULL);
 			spin_lock(&inode->i_lock);
 			atomic_dec(&inode->i_count);
 		}
@@ -1203,6 +1219,9 @@ static void f2fs_put_super(struct super_block *sb)
 		};
 		f2fs_write_checkpoint(sbi, &cpc);
 	}
+
+	/* write_checkpoint can update stat informaion */
+	f2fs_destroy_stats(sbi);
 
 	/*
 	 * normally superblock is clean, so we need to release this.
@@ -1367,6 +1386,7 @@ static int f2fs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	total_count = le64_to_cpu(sbi->raw_super->block_count);
 	user_block_count = sbi->user_block_count;
 	start_count = le32_to_cpu(sbi->raw_super->segment0_blkaddr);
+	ovp_count = SM_I(sbi)->ovp_segments << sbi->log_blocks_per_seg;
 	buf->f_type = F2FS_SUPER_MAGIC;
 	buf->f_bsize = sbi->blocksize;
 
@@ -1490,7 +1510,7 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 		seq_printf(seq, ",background_gc=%s", "on");
 	else if (F2FS_OPTION(sbi).bggc_mode == BGGC_MODE_OFF)
 		seq_printf(seq, ",background_gc=%s", "off");
-
+	}
 	if (test_opt(sbi, DISABLE_ROLL_FORWARD))
 		seq_puts(seq, ",disable_roll_forward");
 	if (test_opt(sbi, NORECOVERY))
@@ -1629,6 +1649,7 @@ static void default_options(struct f2fs_sb_info *sbi)
 	F2FS_OPTION(sbi).compress_ext_cnt = 0;
 	F2FS_OPTION(sbi).bggc_mode = BGGC_MODE_ON;
 
+	set_opt(sbi, BG_GC);
 	set_opt(sbi, INLINE_XATTR);
 	set_opt(sbi, INLINE_DATA);
 	set_opt(sbi, INLINE_DENTRY);
@@ -1752,6 +1773,8 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	bool no_io_align = !F2FS_IO_ALIGNED(sbi);
 	bool checkpoint_changed;
 #ifdef CONFIG_QUOTA
+	int s_jquota_fmt;
+	char *s_qf_names[MAXQUOTAS];
 	int i, j;
 #endif
 
@@ -1761,6 +1784,7 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	 */
 	org_mount_opt = sbi->mount_opt;
 	old_sb_flags = sb->s_flags;
+	active_logs = sbi->active_logs;
 
 #ifdef CONFIG_QUOTA
 	org_mount_opt.s_jquota_fmt = F2FS_OPTION(sbi).s_jquota_fmt;
@@ -1922,7 +1946,11 @@ restore_opts:
 	}
 #endif
 	sbi->mount_opt = org_mount_opt;
+	sbi->active_logs = active_logs;
 	sb->s_flags = old_sb_flags;
+#ifdef CONFIG_F2FS_FAULT_INJECTION
+	sbi->fault_info = ffi;
+#endif
 	return err;
 }
 
@@ -2611,6 +2639,7 @@ static int __f2fs_commit_super(struct buffer_head *bh,
 	lock_buffer(bh);
 	if (super)
 		memcpy(bh->b_data + F2FS_SUPER_OFFSET, super, sizeof(*super));
+	set_buffer_uptodate(bh);
 	set_buffer_dirty(bh);
 	unlock_buffer(bh);
 
@@ -2720,6 +2749,7 @@ static int sanity_check_raw_super(struct f2fs_sb_info *sbi,
 	block_t total_sections, blocks_per_seg;
 	struct f2fs_super_block *raw_super = (struct f2fs_super_block *)
 					(bh->b_data + F2FS_SUPER_OFFSET);
+	struct super_block *sb = sbi->sb;
 	unsigned int blocksize;
 	size_t crc_offset = 0;
 	__u32 crc = 0;
@@ -3208,6 +3238,10 @@ static int read_raw_super_block(struct f2fs_sb_info *sbi,
 		brelse(bh);
 	}
 
+	/* Fail to read any one of the superblocks*/
+	if (err < 0)
+		*recovery = 1;
+
 	/* No valid superblock */
 	if (!*raw_super)
 		kvfree(super);
@@ -3684,6 +3718,12 @@ try_onemore:
 		goto free_stats;
 	}
 
+	f2fs_join_shrinker(sbi);
+
+	err = f2fs_build_stats(sbi);
+	if (err)
+		goto free_nm;
+
 	/* read root inode and dentry */
 	root = f2fs_iget(sb, F2FS_ROOT_INO(sbi));
 	if (IS_ERR(root)) {
@@ -3834,6 +3874,9 @@ free_root_inode:
 free_node_inode:
 	f2fs_release_ino_entry(sbi, true);
 	truncate_inode_pages_final(NODE_MAPPING(sbi));
+	mutex_lock(&sbi->umount_mutex);
+	release_ino_entry(sbi, true);
+	f2fs_leave_shrinker(sbi);
 	iput(sbi->node_inode);
 	sbi->node_inode = NULL;
 free_stats:
@@ -3864,6 +3907,9 @@ free_bio_info:
 	utf8_unload(sb->s_encoding);
 #endif
 free_options:
+	for (i = 0; i < NR_PAGE_TYPE; i++)
+		kfree(sbi->write_io[i]);
+	destroy_percpu_info(sbi);
 #ifdef CONFIG_QUOTA
 	for (i = 0; i < MAXQUOTAS; i++)
 		kvfree(F2FS_OPTION(sbi).s_qf_names[i]);
