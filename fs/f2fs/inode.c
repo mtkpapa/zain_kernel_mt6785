@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * fs/f2fs/inode.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *             http://www.samsung.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
@@ -122,6 +125,7 @@ static void __recover_inline_status(struct inode *inode, struct page *ipage)
 static bool f2fs_enable_inode_chksum(struct f2fs_sb_info *sbi, struct page *page)
 {
 	struct f2fs_inode *ri = &F2FS_NODE(page)->i;
+	int extra_isize = le32_to_cpu(ri->i_extra_isize);
 
 	if (!f2fs_sb_has_inode_chksum(sbi))
 		return false;
@@ -418,6 +422,8 @@ static int do_read_inode(struct inode *inode)
 		if (!err)
 			set_inode_flag(inode, FI_FIRST_BLOCK_WRITTEN);
 	}
+	if (!err)
+		set_inode_flag(inode, FI_FIRST_BLOCK_WRITTEN);
 
 	if (!f2fs_need_inode_block_update(sbi, inode->i_ino))
 		fi->last_disk_size = inode->i_size;
@@ -552,6 +558,8 @@ void f2fs_update_inode(struct inode *inode, struct page *node_page)
 
 	f2fs_inode_synced(inode);
 
+	f2fs_wait_on_page_writeback(node_page, NODE, true);
+
 	ri = F2FS_INODE(node_page);
 
 	ri->i_mode = cpu_to_le16(inode->i_mode);
@@ -628,6 +636,7 @@ void f2fs_update_inode(struct inode *inode, struct page *node_page)
 	}
 
 	__set_inode_rdev(inode, ri);
+	set_cold_node(inode, node_page);
 
 	/* deleted inode */
 	if (inode->i_nlink == 0)
@@ -647,6 +656,7 @@ void f2fs_update_inode_page(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct page *node_page;
+	int ret = 0;
 retry:
 	node_page = f2fs_get_node_page(sbi, inode->i_ino);
 	if (IS_ERR(node_page)) {
@@ -661,6 +671,7 @@ retry:
 	}
 	f2fs_update_inode(inode, node_page);
 	f2fs_put_page(node_page, 1);
+	return ret;
 }
 
 int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
@@ -736,6 +747,7 @@ retry:
 	if (F2FS_HAS_BLOCKS(inode))
 		err = f2fs_truncate(inode);
 
+#ifdef CONFIG_F2FS_FAULT_INJECTION
 	if (time_to_inject(sbi, FAULT_EVICT_INODE)) {
 		f2fs_show_injection_info(sbi, FAULT_EVICT_INODE);
 		err = -EIO;
