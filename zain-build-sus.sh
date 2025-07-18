@@ -22,6 +22,9 @@ CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
 LLVM=1 \
 LLVM_IAS=1"
 
+local_version_str="-perf"
+local_version_date_str="-OverHeat-Next-$(date +%Y%m%d)}
+
 if [ ! -f "arch/arm64/configs/${TARGET_DEVICE}_defconfig" ]; then
     echo "No [${TARGET_DEVICE}] defconfig found."
     echo "Avaliable defconfigs:"
@@ -51,12 +54,12 @@ fi
 
 rm -rf out/
 
-echo "-OverHeat-LTO-Next" > localversion
-
 #----------------------build shit here
 
 echo "======= START OF BUILD ======="
 make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
+
+sed -i "s/${local_version_str}/${local_version_date_str}/g" out/.config
 
 if [ $KSU_E -eq 1 ]; then
     scripts/config --file out/.config -e KSU \
