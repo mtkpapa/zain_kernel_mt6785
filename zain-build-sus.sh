@@ -23,7 +23,7 @@ LLVM=1 \
 LLVM_IAS=1"
 
 local_version_str="-perf"
-local_version_date_str="-OverHeat-Next-$(date +%Y%m%d)}
+local_version_date_str="-OverHeat-Next-$(date +%Y%m%d)"
 
 if [ ! -f "arch/arm64/configs/${TARGET_DEVICE}_defconfig" ]; then
     echo "No [${TARGET_DEVICE}] defconfig found."
