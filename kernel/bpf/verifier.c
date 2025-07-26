@@ -166,7 +166,7 @@ static DEFINE_MUTEX(bpf_verifier_lock);
  */
 static __printf(1, 2) void verbose(const char *fmt, ...)
 {
-	struct bpf_verifer_log *log = &verifier_log;
+	struct bpf_verifier_log *log = &env->log;
 	va_list args;
 
 	if (!log->level || bpf_verifier_log_full(log))
@@ -5128,7 +5128,7 @@ static void free_states(struct bpf_verifier_env *env)
 
 int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 {
-	struct bpf_verifer_log *log = &verifier_log;
+	struct bpf_verifier_log *log = &verifier_log;
 	struct bpf_verifier_env *env;
 	int ret = -EINVAL;
 
