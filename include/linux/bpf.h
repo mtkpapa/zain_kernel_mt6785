@@ -222,6 +222,7 @@ struct bpf_prog_aux {
 #ifdef CONFIG_SECURITY
 	void *security;
 #endif
+	struct bpf_map *cgroup_storage;
 	struct bpf_dev_offload *offload;
 	union {
 		struct work_struct work;
