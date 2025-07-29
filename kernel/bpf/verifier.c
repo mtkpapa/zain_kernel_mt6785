@@ -156,7 +156,7 @@ struct bpf_call_arg_meta {
 /* verbose verifier prints what it's seeing
  * bpf_check() is called under lock, so no race to access these global vars
  */
-static struct bpf_verifer_log verifier_log;
+static struct bpf_verifier_log verifier_log;
 
 static DEFINE_MUTEX(bpf_verifier_lock);
 
@@ -202,7 +202,7 @@ EXPORT_SYMBOL_GPL(bpf_verifier_log_write);
  */
 static __printf(1, 2) void verbose(const char *fmt, ...)
 {
-	struct bpf_verifer_log *log = &verifier_log;
+	struct bpf_verifier_log *log = &verifier_log;
 	va_list args;
 
 	if (!bpf_verifier_log_needed(&verifier_log))
@@ -3635,22 +3635,22 @@ static int check_return_code(struct bpf_verifier_env *env)
 
 	reg = &env->cur_state->regs[BPF_REG_0];
 	if (reg->type != SCALAR_VALUE) {
-		verbose(env, "At program exit the register R0 is not a known value (%s)\n",
+		verbose("At program exit the register R0 is not a known value (%s)\n",
 			reg_type_str[reg->type]);
 		return -EINVAL;
 	}
 
 	if (!tnum_in(range, reg->var_off)) {
-		verbose(env, "At program exit the register R0 ");
+		verbose("At program exit the register R0 ");
 		if (!tnum_is_unknown(reg->var_off)) {
 			char tn_buf[48];
 
 			tnum_strn(tn_buf, sizeof(tn_buf), reg->var_off);
-			verbose(env, "has value %s", tn_buf);
+			verbose("has value %s", tn_buf);
 		} else {
-			verbose(env, "has unknown scalar value");
+			verbose("has unknown scalar value");
 		}
-		verbose(env, " should have been 0 or 1\n");
+		verbose(" should have been 0 or 1\n");
 		return -EINVAL;
 	}
 	return 0;
@@ -5155,7 +5155,6 @@ static void free_states(struct bpf_verifier_env *env)
 
 int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 {
-	struct bpf_verifer_log *log = &verifier_log;
 	struct bpf_verifier_env *env;
 	struct bpf_verifier_log *log;
 	int ret = -EINVAL;
