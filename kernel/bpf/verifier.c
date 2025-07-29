@@ -1681,8 +1681,6 @@ static int check_helper_mem_access(struct bpf_verifier_env *env, int regno,
 	}
 }
 
-<<<<<<< HEAD
-=======
 /* Implementation details:
  * bpf_map_lookup returns PTR_TO_MAP_VALUE_OR_NULL
  * Two bpf_map_lookups (even with the same key) will have different reg->id.
@@ -4877,9 +4875,6 @@ static int check_map_prealloc(struct bpf_map *map)
 		!(map->map_flags & BPF_F_NO_PREALLOC);
 }
 
-<<<<<<< HEAD
-static int check_map_prog_compatibility(struct bpf_map *map,
-=======
 static bool is_tracing_prog_type(enum bpf_prog_type type)
 {
 	switch (type) {
@@ -4915,8 +4910,6 @@ static int check_map_prog_compatibility(struct bpf_verifier_env *env,
 			return -EINVAL;
 		}
 	}
-<<<<<<< HEAD
-=======
 
 	if ((is_tracing_prog_type(prog->type) ||
 	     prog->type == BPF_PROG_TYPE_SOCKET_FILTER) &&
