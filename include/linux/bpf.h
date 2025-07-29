@@ -60,17 +60,12 @@ struct bpf_map {
 	int spin_lock_off; /* >=0 valid offset, <0 error */
 	u32 id;
 	int numa_node;
-<<<<<<< HEAD
-	bool unpriv_array;
-	/* 7 bytes hole */
-=======
 	u32 btf_key_type_id;
 	u32 btf_value_type_id;
 	struct btf *btf;
 	u32 pages;
 	bool unpriv_array;
 	/* 51 bytes hole */
->>>>>>> 384d95649515 (bpf: introduce bpf_spin_lock)
 
 	/* 2nd cacheline with misc members to avoid false sharing
 	 * particularly with refcounting.
@@ -167,11 +162,8 @@ enum bpf_arg_type {
 
 	ARG_PTR_TO_CTX,		/* pointer to context */
 	ARG_ANYTHING,		/* any (initialized) argument is ok */
-<<<<<<< HEAD
-=======
 	ARG_PTR_TO_SOCKET,	/* pointer to bpf_sock */
 	ARG_PTR_TO_SPIN_LOCK,	/* pointer to bpf_spin_lock */
->>>>>>> 384d95649515 (bpf: introduce bpf_spin_lock)
 };
 
 /* type of values returned from helper functions */
@@ -598,13 +590,10 @@ extern const struct bpf_func_proto bpf_skb_vlan_push_proto;
 extern const struct bpf_func_proto bpf_skb_vlan_pop_proto;
 extern const struct bpf_func_proto bpf_get_stackid_proto;
 extern const struct bpf_func_proto bpf_sock_map_update_proto;
-<<<<<<< HEAD
-=======
 extern const struct bpf_func_proto bpf_get_current_cgroup_id_proto;
 extern const struct bpf_func_proto bpf_spin_lock_proto;
 extern const struct bpf_func_proto bpf_spin_unlock_proto;
 extern const struct bpf_func_proto bpf_get_local_storage_proto;
->>>>>>> 384d95649515 (bpf: introduce bpf_spin_lock)
 
 /* Shared helpers among cBPF and eBPF. */
 void bpf_user_rnd_init_once(void);
