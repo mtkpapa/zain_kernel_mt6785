@@ -152,7 +152,6 @@ static inline bool bpf_verifier_log_full(const struct bpf_verifier_log *log)
 	return log->len_used >= log->len_total - 1;
 }
 
-<<<<<<< HEAD
 static inline bool bpf_verifier_log_needed(const struct bpf_verifier_log *log)
 {
 	return log->level && log->ubuf && !bpf_verifier_log_full(log);
