@@ -21,7 +21,7 @@ Now you need to define it in the $PATH. Add this to your .bashrc
 export PATH=/root/zyclang21/bin:$PATH
 export LD_LIBRARY_PATH=/root/zyclang21/lib
 ```
-And you're ready to rock!
+Reopen Terminal or do 'source .bashrc' and you're ready to rock!
 
 ## Building kernel
 
