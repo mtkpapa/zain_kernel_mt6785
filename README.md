@@ -4,7 +4,7 @@ This repository contains a slightly updated kernel tree for the **rosemary** Xia
 
 # How to build
 
-## 1. Setting up the enviroment
+## Setting up the enviroment
 
 	Firstly, you need to install those packages
 	```
@@ -23,7 +23,7 @@ This repository contains a slightly updated kernel tree for the **rosemary** Xia
 	```
 	And you're ready to rock!
 
-## 2. Building kernel
+## Building kernel
 
 	Build without KernelSU
 	```
