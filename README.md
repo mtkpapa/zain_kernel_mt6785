@@ -14,7 +14,7 @@ Next you need to prepare a toolchain. I recommend using [this](https://github.co
 	
 Execute this command somewhere where you want your toolchain to be
 ```
-mkdir zyclang22 && wget -O- https://github.com/ZyCromerZ/Clang/releases/download/21.0.0git-20250418-release/Clang-21.0.0git-20250418.tar.gz | tar -xzf - -C zyclang21
+mkdir zyclang21 && wget -O- https://github.com/ZyCromerZ/Clang/releases/download/21.0.0git-20250418-release/Clang-21.0.0git-20250418.tar.gz | tar -xzf - -C zyclang21
 ```
 Now you need to define it in the $PATH. Add this to your .bashrc
 ```
