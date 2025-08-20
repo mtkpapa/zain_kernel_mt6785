@@ -1,36 +1,26 @@
-TARGET_DEVICE=$1
 BUILD_DATE=$(date "+%Y%m%d-%H%M")
 
 #ccache
 export CCACHE_DIR="$HOME/.cache/ccache_mikernel"
-export CC="ccache gcc"
-export CXX="ccache g++"
-export PATH="/usr/lib/ccache:$PATH"
 echo "CCACHE_DIR: [$CCACHE_DIR]"
 
-MAKE_ARGS="O=out \
-CC=clang \
-AR=llvm-ar \
-NM=llvm-nm \
-OBJDUMP=llvm-objdump \
-STRIP=llvm-strip \
-HOSTCC=clang \
-HOSTCXX=clang++ \
-LD=ld.lld \
-CROSS_COMPILE=aarch64-linux-gnu- \
-CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-LLVM=1 \
-LLVM_IAS=1"
+MAKE_ARGS=(
+    O=out
+    "CC=ccache clang"
+    "CXX=ccache clang++"
+    AR=llvm-ar
+    NM=llvm-nm
+    OBJDUMP=llvm-objdump
+    STRIP=llvm-strip
+    LD=ld.lld
+    CROSS_COMPILE=aarch64-linux-gnu-
+    CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+    LLVM=1
+    LLVM_IAS=1
+)
 
 local_version_str="-perf"
 local_version_date_str="-OverHeat-Next-$(date +%Y%m%d)"
-
-if [ ! -f "arch/arm64/configs/${TARGET_DEVICE}_defconfig" ]; then
-    echo "No [${TARGET_DEVICE}] defconfig found."
-    echo "Avaliable defconfigs:"
-    ls arch/arm64/configs/*_defconfig
-    exit 1
-fi
 
 KSU_ZIP_STR=noksu
 if [ "$2" == "ksu" ]; then
@@ -40,24 +30,23 @@ else
     KSU_E=0
 fi
 
+rm -rf out/
+rm -rf AnyKernel3/
+
 #setting up AK
 git clone https://github.com/mtkpapa/AnyKernel3 -b master
 
 if [ $KSU_E -eq 1 ]; then
-    echo "dloading ksu & applying patches"
+    echo "Downloading KernelSU-Next"
     curl -LSs "https://raw.githubusercontent.com/mtkpapa/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
-#    wget https://gist.githubusercontent.com/zainarbani/2b482e9e9c415a644953397b6ba5571f/raw/b66cf8d0683b5397fc1f7cc6b33ff12cc9bf9292/ksu.patch
-#    git apply ksu.patch
 else 
-    echo "no ksu build"
+    echo "Building without KernelSU-Next"
 fi
 
-rm -rf out/
-
-#----------------------build shit here
+#----------------------build stuff here
 
 echo "======= START OF BUILD ======="
-make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
+make "${MAKE_ARGS[@]}" rosemary_defconfig
 
 sed -i "s/${local_version_str}/${local_version_date_str}/g" out/.config
 
@@ -97,12 +86,10 @@ scripts/config --file out/.config -d KSU \
     -d KSU_SUSFS_SUS_SU
 fi
 
-make $MAKE_ARGS -j$(nproc --all)
+make "${MAKE_ARGS[@]}" -j$(nproc --all)
 echo "======= END OF BUILD ======="
 
-KOUT_PATH="/mnt/d/users/juan/kernels/${TARGET_DEVICE}/"
 ZIP_NAME="OverHeat-Next-$(date "+%Y%m%d-%H%M").zip"
-
 
 if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
     echo "Image found. Build successful"
@@ -110,16 +97,15 @@ if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
 	cp ../out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
 	zip -r9 ../$ZIP_NAME -- *
 	cd ..
-	cp $ZIP_NAME $KOUT_PATH
+	cp $ZIP_NAME ../
 	rm -rf $ZIP_NAME
 else
-    echo "Image not found. Pizdec blyat"
+    echo "Image not found. Build failed!"
     exit 1
 fi
 
-echo "Cleaning up"
+echo "======= CLEANING UP ======="
 
-rm -rf KernelSU-Next/
-rm -rf out/
-rm -rf localversion
-rm -rf AnyKernel3
+rm -rf KernelSU-Next/ && echo "  RM      KernelSU-Next"
+rm -rf out/ && echo "  RM      out"
+rm -rf AnyKernel3 && echo "  RM      AnyKernel3"
