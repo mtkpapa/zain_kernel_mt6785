@@ -97,7 +97,7 @@ if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
 	cp ../out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
 	zip -r9 ../$ZIP_NAME -- *
 	cd ..
-	cp $ZIP_NAME ../
+	cp $ZIP_NAME ./
 	rm -rf $ZIP_NAME
 else
     echo "Image not found. Build failed!"
