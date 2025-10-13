@@ -90,7 +90,7 @@ make "${MAKE_ARGS[@]}" -j$(nproc --all)
 echo "======= END OF BUILD ======="
 
 ZIP_NAME="OverHeat-Next-$(date "+%Y%m%d-%H%M").zip"
-KOUT_PATH="/mnt/d/users/juan/kernels/${TARGET_DEVICE}/"
+KOUT_PATH="/mnt/d/users/juan/kernels/rosemary/"
 
 if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
     echo "Image found. Build successful"
