@@ -4,7 +4,7 @@
  * Copyright 2002 Hewlett-Packard Company
  * Copyright 2005-2008 Pierre Ossman
  *
- * Use consistent with the GNU GPL is permitted,
+ * Use consistent with the GNU GPL version 2 is permitted,
  * provided that this copyright notice is
  * preserved in its entirety in all copies and derived works.
  *
@@ -222,7 +222,6 @@ static void mmc_blk_put(struct mmc_blk_data *md)
 	md->usage--;
 	if (md->usage == 0) {
 		int devidx = mmc_get_devidx(md->disk);
-		blk_cleanup_queue(md->queue.queue);
 		ida_simple_remove(&mmc_blk_ida, devidx);
 		put_disk(md->disk);
 		kfree(md);
@@ -1868,7 +1867,6 @@ static void mmc_blk_issue_drv_op(struct mmc_queue *mq, struct request *req)
 #endif
 	mq_rq = req_to_mmc_queue_req(req);
 	rpmb_ioctl = (mq_rq->drv_op == MMC_DRV_OP_IOCTL_RPMB);
-
 	switch (mq_rq->drv_op) {
 	case MMC_DRV_OP_IOCTL:
 	case MMC_DRV_OP_IOCTL_RPMB:
@@ -3939,7 +3937,7 @@ void mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			 * Complete ongoing async transfer before issuing
 			 * flush.
 			 */
-			if (mq->qcnt)
+			if (atomic_read(&mq->qcnt))
 				mmc_blk_issue_rw_rq(mq, NULL);
 			mmc_blk_issue_flush(mq, req);
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
@@ -4170,14 +4168,12 @@ static int mmc_blk_alloc_part(struct mmc_card *card,
 {
 	char cap_str[10];
 	struct mmc_blk_data *part_md;
-
 	part_md = mmc_blk_alloc_req(card, disk_to_dev(md->disk), size, default_ro,
 				    subname, area_type);
 	if (IS_ERR(part_md))
 		return PTR_ERR(part_md);
 	part_md->part_type = part_type;
 	list_add(&part_md->part, &md->part);
-
 	string_get_size((u64)get_capacity(part_md->disk), 512, STRING_UNITS_2,
 			cap_str, sizeof(cap_str));
 	pr_info("%s: %s %s partition %u %s\n",
@@ -4280,7 +4276,6 @@ static int mmc_blk_alloc_rpmb_part(struct mmc_card *card,
 	char rpmb_name[DISK_NAME_LEN];
 	char cap_str[10];
 	struct mmc_rpmb_data *rpmb;
-
 	/* This creates the minor number for the RPMB char device */
 	devidx = ida_simple_get(&mmc_rpmb_ida, 0, max_devices, GFP_KERNEL);
 	if (devidx < 0)
@@ -4315,7 +4310,6 @@ static int mmc_blk_alloc_rpmb_part(struct mmc_card *card,
 	}
 
 	list_add(&rpmb->node, &md->rpmbs);
-
 	string_get_size((u64)size, 512, STRING_UNITS_2,
 			cap_str, sizeof(cap_str));
 
@@ -4440,7 +4434,6 @@ static int mmc_add_disk(struct mmc_blk_data *md)
 {
 	int ret;
 	struct mmc_card *card = md->queue.card;
-
 	device_add_disk(md->parent, md->disk);
 	md->force_ro.show = force_ro_show;
 	md->force_ro.store = force_ro_store;
