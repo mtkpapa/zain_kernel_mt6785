@@ -3939,7 +3939,7 @@ void mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			 * Complete ongoing async transfer before issuing
 			 * flush.
 			 */
-			if (atomic_read(&mq->qcnt))
+			if (mq->qcnt)
 				mmc_blk_issue_rw_rq(mq, NULL);
 			mmc_blk_issue_flush(mq, req);
 #ifdef CONFIG_MTK_EMMC_CQ_SUPPORT

@@ -902,7 +902,7 @@ struct task_struct {
 	 * guarantees all stores of 'current' are visible before
 	 * ->sched_remote_wakeup gets used, so it can be in this word.
 	 */
-//	unsigned			sched_remote_wakeup:1;
+	unsigned			sched_remote_wakeup:1;
 
 	/* Bit to tell LSMs we're in execve(): */
 	unsigned			in_execve:1;
