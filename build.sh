@@ -23,7 +23,7 @@ local_version_str="-perf"
 local_version_date_str="-OverHeat-Next-$(date +%Y%m%d)"
 
 KSU_ZIP_STR=noksu
-if [ "$2" == "ksu" ]; then
+if [ "$1" == "ksu" ]; then
     KSU_E=1
     KSU_ZIP_STR=ksu
 else
