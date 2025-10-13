@@ -38,7 +38,7 @@ git clone https://github.com/mtkpapa/AnyKernel3 -b master
 
 if [ $KSU_E -eq 1 ]; then
     echo "Downloading KernelSU-Next"
-    curl -LSs "https://raw.githubusercontent.com/mtkpapa/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+    curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
 else 
     echo "Building without KernelSU-Next"
 fi
