@@ -1,3 +1,4 @@
+set -e
 BUILD_DATE=$(date "+%Y%m%d-%H%M")
 
 #ccache
